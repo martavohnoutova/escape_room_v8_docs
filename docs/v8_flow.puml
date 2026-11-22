@@ -1,0 +1,101 @@
+@startuml v8_activity
+skinparam defaultFontSize 12
+title escape_room_v8 – jeden tah (Proposer + Critic)
+
+start
+repeat
+  :**select**
+  (compile_retries / terminate);
+  :**Proposer** – gemma3:12b
+  vrací SemanticAction;
+  :**Critic** – qwen2.5-coder:7b
+  vrací {veto, reason};
+  note right
+    Vidí jen:
+    room, inventory,
+    visible objects,
+    failed actions.
+    Nikdy milníky ani scénář.
+  end note
+
+  if (critic selhal?) then (ano)
+    #FFDDDD:**fail-open**
+    critic_error_count += 1;
+  elseif (veto?) then (ano)
+    #FFE0B2:**critic_veto**
+    turn += 1, O2 -= 0
+    decision_log + tried_actions;
+  else (ne)
+    #DDEEFF:**compiler**
+    verb, resolver, location,
+    tool check, filtr;
+    if (compile ok?) then (ano)
+      :**engine.apply_command**
+      O2 -= 1;
+    else (ne)
+      :**compile_error**
+      turn += 1;
+    endif
+  endif
+
+  :**observe** – update blackboard;
+  :**gate** – escape / O2 /
+  turn_budget / stagnace;
+repeat while (běh nekončí?) is (ano)
+:END;
+stop
+
+@enduml
+
+
+@startuml v8_components
+skinparam defaultFontSize 12
+title escape_room_v8 – komponenty
+
+actor "Marta / CI" as U
+
+package "FastAPI" {
+  [app/api/main.py] as API
+}
+
+package "LangGraph" {
+  [select] as SEL
+  [manager\n(proposer)] as P
+  [critic] as C
+  [act] as A
+  [observe] as O
+  [gate] as G
+}
+
+package "Core" {
+  [engine.py] as E
+  [compiler.py\n+ neutrální filtr] as K
+  [blackboard.py] as B
+  [models.py\nCriticVerdict] as M
+}
+
+database "blackboard (stav)" as BB
+
+cloud "Ollama (lokálně)" {
+  [gemma3:12b] as GM
+  [qwen2.5-coder:7b] as QW
+}
+
+U --> API : POST /run {seed, temperature,\nguard_mode, filter_mode}
+API --> SEL
+SEL --> P
+P --> GM
+P --> C
+C --> QW
+C --> BB
+C --> A
+A --> K
+K --> E
+E --> O
+O --> B
+B --> BB
+O --> G
+G --> SEL : další tah
+G --> API : konec běhu
+
+@enduml
