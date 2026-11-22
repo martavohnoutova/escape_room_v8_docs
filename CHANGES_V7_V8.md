@@ -10,33 +10,37 @@
 
 ## 1. Shrnutí
 
-| | v7.3-baseline | v8-team |
+| | v7.3-baseline | v8-team (v8.3) |
 |---|---|---|
-rolí s LLM | 1 (`manager`) | 2 (`proposer`, `critic`) |
-uzlů na tah | 5 | 6 (`select → manager → critic → act → observe → gate`) |
-rozhoduje o akci | model | model, ale **critic může vetovat** |
-veto | – | 1 tah, 0 kyslíku, `critic_veto` |
-chyba criticа | – | fail-open (`critic_error_count`) |
+rolí s LLM | 1 (`manager`) | 2–3 **searcheři** (round-robin) |
+koordinace | – | **deterministický coordinator** každé K tahy |
+uzlů na tah | 5 | 6 (`select → manager → act → observe → coordinator? → gate`) |
+rozhoduje o akci | model | model; coordinator jen **kam se dívat** |
+sdílená paměť | blackboard bez faktů | **fakta** `(subject, attribute, value)`, write-on-change |
+veto / rady | – | **žádné** (critic odstraněn) |
 seed do Ollamy | ne | **ano** (`ChatOllama(seed=…)`) |
-filtr A+L | není | je, ale v team configu `filter_mode: off` |
+filtr A+L | není | je, `filter_mode: on` ve všech ramenech |
 notebooky / PNG | v repu | odstraněny z větve |
 
-## 2. Změny po souborech
+## 2. Změny po souborech (shrnutí)
 
-```
-DESIGN_TEAM_V8.md            | 130 ++   nový návrh v8 (2 role, veto účtování)
-app/agents/graph.py          |  11 +-   +critic node, manager→critic, conditional critic→{act,observe}
-app/agents/nodes.py          | 155 ++   critic_node, _build_critic_human, after_critic
-app/agents/prompts.py        |  39 +    CRITIC_SYSTEM, CRITIC_HUMAN_TEMPLATE
-app/api/main.py              |  35 +-   critic LLM z configu, manifest mode/critic_*
-app/core/compiler.py         |  34 +    neutrální filtr A+L (v týmu off)
-app/core/models.py           |  15 +-   CriticVerdict, critic_veto, stavová pole
-configs/team_gemma_qwen.yaml |  17 +    proposer gemma3:12b + critic qwen2.5-coder:7b
-tests/test_filter.py         |  65 +    testy filtru (4)
-tests/test_team.py           | 124 +    testy týmu: veto, fail-open, pass (3)
-escape_room_v7-*.ipynb       | -6635   odstraněno z v8
-escape_room_v7*.png          |  -2     odstraněno z v8
-```
+**Nové:**
+- `app/core/coordinator.py` – deterministická heuristika výběru pozornosti (bez modelu)
+- `tests/test_team.py` – 6 testů: write-on-change, fact coverage, coordinator, round-robin
+
+**Změněné:**
+- `app/core/models.py` – `Fact`, `Directive`, `coordinate`, stavová pole
+- `app/core/blackboard.py` – zápis faktů, `fact_coverage`, `record_facts_from_snapshot`
+- `app/agents/nodes.py` – fakta v observe, coordinator node, round-robin výběr searchera
+- `app/agents/prompts.py` – `[COORDINATOR FOCUS]` a `[SHARED FACTS]`, critic odstraněn
+- `app/agents/graph.py` – `observe → coordinator? → gate`
+- `app/api/main.py` – `searchers[]`, `coordinator_k`, manifest bez critic polí
+- `configs/team_gemma_qwen.yaml` – dva searcheři, `coordinator_k: 3`, filtr `on`
+
+**Odstraněné z větve:** `escape_room_v7-*.ipynb`, `escape_room_v7*.png`.
+
+Přesná čísla: `git diff --stat v7.3-baseline..v8-team`.
+
 
 ## 3. Co zůstalo stejné
 
@@ -50,14 +54,14 @@ escape_room_v7*.png          |  -2     odstraněno z v8
 
 - **v7:** `COMMUNICATE` zapisoval do `messages`, ale s jedním agentem neměl příjemce;
   `messages` zůstávalo prázdné.
-- **v8:** komunikace jde **výhradně přes blackboard**:
-  - `critic` dostane jen jeden návrh + `current_room`, `inventory`, viditelné objekty a selhané akce;
-  - `proposer` dostane `tried_actions` a stav světa jako dosud;
-  - `critic` nesmí navrhnout akci – jeho schéma má jen `{veto, reason}`;
-  - sdílený kanál nejsou volné texty, ale `tried_actions` a `decision_log` (faktické záznamy).
-- Důvod: volný text mezi agenty se hromadí v promptech a nedá se měřit. Blackboard ano.
-- **Plánovaný další krok** (není v této větvi): `facts` jako strukturovaný kanál
-  `{subject, attribute, value, source_role, turn}`.
+- **v8.3:** komunikace jde **výhradně přes blackboard**:
+  - searcheři zapisují **fakta odvozená z enginu**
+    (`subject, attribute, value, source_agent, turn, room`),
+  - každý searcher vidí celý blackboard – sdílená paměť je pointa,
+  - coordinator vydává jen direktivu `{focus_kind, focus_id}` – „kam se dívat“,
+  - žádné rady, žádné veto, žádný volný text mezi agenty.
+- Duplicity se nezakazují, ale **nezapisují** (write-on-change) a **měří** (`duplicate_fact_rate`).
+- Důvod: volný text mezi agenty se hromadí v promptech a nedá se měřit. Strukturovaná fakta ano.
 
 ## 5. Deterministické a stochastické části
 
