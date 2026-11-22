@@ -4,6 +4,10 @@
 **Větev:** `v8-team` (`b0bb6df`)
 **Datum:** 2026-11-22
 
+> **POZOR:** tento dokument popisuje **stav kódu s criticem (v8.0)**. Návrh v8.3 critic odstraňuje
+> (searcheři + deterministický coordinator); kód bude aktualizován po schválení designu.
+> Aktuální design je v `DESIGN_TEAM_V8.md`.
+
 ## 1. Shrnutí
 
 | | v7.3-baseline | v8-team |
