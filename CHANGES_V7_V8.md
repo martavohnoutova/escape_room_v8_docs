@@ -68,10 +68,10 @@ Přesná čísla: `git diff --stat v7.3-baseline..v8-team`.
 | část | deterministická? | poznámka |
 |---|---|---|
 engine, scénář, secrets | ano | `seed` řídí všechny náhody světa |
-router (`select`, `after_critic`, `gate`) | ano | čistá funkce stavu |
+router (`select`, `after_observe`, `gate`) | ano | čistá funkce stavu |
+**coordinator** | **ano** | deterministická heuristika, žádný model |
 filtr A+L, guard | ano | pravidla, žádný model |
-`critic` | při `temperature: 0` prakticky ano | + `seed` do Ollamy; ale viz níže |
-`proposer` | ne | `temperature: 0.3`; `seed` dělá běh **reprodukovatelným**, ne deterministickým napříč vším |
+searcheři | ne | `temperature: 0.3`; `seed` dělá běh **reprodukovatelným**, ne deterministickým napříč vším |
 
 Co reprodukovatelnost rozbije i se seedem:
 - jiný digest modelu (Ollama `latest` se může změnit),
@@ -79,8 +79,9 @@ Co reprodukovatelnost rozbije i se seedem:
 - jiný `num_ctx`, `num_predict`, prompt nebo commit (proto manifest),
 - GPU offload a batching mohou změnit numeriku.
 
-Ověření: dva běhy se stejným `seed` + stejným manifestem musí dát stejnou sekvenci akcí.
-To je akceptační test, který ještě není změřený (čeká na doběhnutí baseline).
+**Ověření (22. 11. 2026, akceptační gate):** dva běhy se stejným `seed 42` a stejným manifestem daly
+**identickou sekvenci** (`PICK_UP flashlight`, `INSPECT dark_corner`), stejný počet faktů (8),
+stejnou `fact_coverage` (0.2222) a stejné duplicity (7). **Gate prošel.**
 
 ## 6. Jak spustit
 
@@ -91,7 +92,7 @@ ESCAPE_CONFIG=configs/team_gemma_qwen.yaml \
 
 curl -X POST localhost:8011/run -H 'Content-Type: application/json' -d '{
   "scenario": "medium_room", "seed": 42, "temperature": 0.3,
-  "guard_mode": "log_only", "filter_mode": "off"
+  "guard_mode": "log_only", "filter_mode": "on"
 }'
 ```
 
